@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KubeSentinel — Autonomous Kubernetes SRE Copilot</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="sre-layout">
+        <!-- Top Navigation Bar -->
+        <header class="sre-header">
+            <div class="logo-area">
+                <span class="sentinel-shield">🛡️</span>
+                <span class="logo-title">KUBESENTINEL</span>
+                <span class="badge badge-subtle">v1.0.0</span>
+            </div>
+            <div class="cluster-status-bar">
+                <div class="status-item"><span class="dot dot-green"></span> Cluster: <strong>prod-k8s-east-1</strong></div>
+                <div class="status-item"><span class="dot dot-amber"></span> Active Incidents: <strong id="activeIncidentsCount">1</strong></div>
+                <div class="status-item"><span class="dot dot-cyan"></span> Guardrails: <strong>Zero-Trust Active</strong></div>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <main class="sre-main">
+            <!-- Sidebar: Incident Feeds & Runbooks -->
+            <aside class="sre-sidebar">
+                <div class="sidebar-section">
+                    <h3>⚡ QUICK SCENARIOS</h3>
+                    <div class="scenario-buttons">
+                        <button class="scenario-btn alert-high" onclick="triggerScenario('checkout-oom')">
+                            <span class="btn-icon">🚨</span>
+                            <div class="btn-text">
+                                <strong>OOMCrashLoop (Exit 137)</strong>
+                                <span>checkout-service in production</span>
+                            </div>
+                        </button>
+                        <button class="scenario-btn alert-med" onclick="triggerScenario('latency-spike')">
+                            <span class="btn-icon">📈</span>
+                            <div class="btn-text">
+                                <strong>5xx Latency Spike (>3.8s)</strong>
+                                <span>gateway-service in production</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>📚 ACTIVE RUNBOOKS</h3>
+                    <ul class="runbook-list">
+                        <li><span class="runbook-icon">📄</span> oom_killed.md</li>
+                        <li><span class="runbook-icon">📄</span> crash_loop.md</li>
+                        <li><span class="runbook-icon">📄</span> high_latency.md</li>
+                    </ul>
+                    <small class="runbook-note">💡 Edit files in <code>data/runbooks/</code> to hot-reload with zero restart.</small>
+                </div>
+            </aside>
+
+            <!-- Center Chat & Diagnostic Console -->
+            <section class="sre-console">
+                <div class="messages-container" id="messagesContainer">
+                    <div class="message system-message">
+                        <div class="message-header"><strong>KUBESENTINEL AGENT INITIALIZED</strong></div>
+                        <div class="message-body">
+                            Autonomous SRE Copilot ready. Connected to Kubernetes API and Prometheus. Enter an incident report or select a scenario from the sidebar to begin autonomous root-cause investigation.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input Area -->
+                <div class="input-panel">
+                    <div class="input-controls">
+                        <label for="namespaceSelect">Namespace:</label>
+                        <select id="namespaceSelect">
+                            <option value="production" selected>production</option>
+                            <option value="staging">staging</option>
+                            <option value="default">default</option>
+                            <option value="monitoring">monitoring</option>
+                        </select>
+                    </div>
+                    <form id="chatForm" onsubmit="handleSend(event)" class="input-row">
+                        <input 
+                            type="text" 
+                            id="messageInput" 
+                            placeholder="e.g. checkout-service pods are restarting with exit code 137, investigate root cause..." 
+                            autocomplete="off"
+                            required
+                        >
+                        <button type="submit" id="sendBtn">
+                            <span>Investigate</span> ⚡
+                        </button>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

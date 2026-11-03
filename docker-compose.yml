@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  kubesentinel-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kubesentinel-api
+    ports:
+      - "8050:8000"
+    environment:
+      - APP_ENV=development
+      - PORT=8000
+      - K8S_MOCK_MODE=true
+      - PROMETHEUS_MOCK_MODE=true
+      - DATABASE_URL=postgresql://kubesentinel:sentinel_secret@postgres:5432/kubesentinel_db
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_PROVIDER=mock  # Options: mock, ollama, openai
+      - LLM_MODEL=qwen2.5-coder:7b
+      - GUARDRAIL_ALLOWED_NAMESPACES=default,production,staging,monitoring
+    volumes:
+      - ./data/runbooks:/app/data/runbooks:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: kubesentinel-postgres
+    environment:
+      POSTGRES_USER: kubesentinel
+      POSTGRES_PASSWORD: sentinel_secret
+      POSTGRES_DB: kubesentinel_db
+    ports:
+      - "5438:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kubesentinel -d kubesentinel_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: kubesentinel-redis
+    ports:
+      - "6385:6379"
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
