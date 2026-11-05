@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from app.services.agent import sre_agent
@@ -12,7 +12,7 @@ class AlertItem(BaseModel):
     status: str
     labels: Dict[str, str] = {}
     annotations: Dict[str, str] = {}
-    startsAt: Optional_str = ""
+    startsAt: Optional[str] = ""
 
 
 class AlertmanagerWebhookPayload(BaseModel):
