@@ -1,6 +1,5 @@
 import json
 import logging
-import asyncio
 from typing import Dict, Any, List, Optional
 from app.core.config import settings
 from app.core.guardrails import InfraGuardrails, GuardrailViolationException
@@ -9,11 +8,21 @@ logger = logging.getLogger("kubesentinel.k8s")
 
 
 class KubernetesService:
-    """Interacts with Kubernetes API or provides high-fidelity simulated cluster state."""
+    """
+    Interacts with Kubernetes API via official kubernetes-client Python SDK
+    or provides high-fidelity simulated cluster state for offline runs.
+    """
 
     def __init__(self):
         self.mock_mode = settings.K8S_MOCK_MODE
-        # Mock cluster state
+        self._v1 = None
+        self._apps_v1 = None
+
+        # Simulated cluster state for offline runs & mock demos
+        self.reset_mock_state()
+
+    def reset_mock_state(self):
+        """Resets simulated cluster state back to initial incident conditions."""
         self._mock_state = {
             "checkout-service": {
                 "namespace": "production",
@@ -31,6 +40,24 @@ class KubernetesService:
                 "recent_commit": "a9f3b12 (feat: enable in-memory checkout session buffer)",
             }
         }
+
+    def _ensure_client(self):
+        """Initializes kubernetes-client with in-cluster SA or local kubeconfig fallback."""
+        if self._v1 and self._apps_v1:
+            return
+        try:
+            from kubernetes import client, config
+            try:
+                config.load_incluster_config()
+                logger.info("Loaded in-cluster Kubernetes ServiceAccount configuration.")
+            except Exception:
+                config.load_kube_config()
+                logger.info("Loaded local kubeconfig configuration.")
+            self._v1 = client.CoreV1Api()
+            self._apps_v1 = client.AppsV1Api()
+        except Exception as e:
+            logger.warning(f"Could not initialize Kubernetes client SDK ({e}). Defaulting to mock engine.")
+            self.mock_mode = True
 
     async def get_pods(self, namespace: str = "production", label: Optional[str] = None) -> List[Dict[str, Any]]:
         """Lists pods in namespace matching optional label."""
@@ -51,11 +78,31 @@ class KubernetesService:
                 for i in range(svc.get("replicas", 3))
             ]
 
-        # Live kubectl execution
-        cmd = ["kubectl", "get", "pods", "-n", namespace, "-o", "json"]
+        self._ensure_client()
+        kwargs = {}
         if label:
-            cmd.extend(["-l", label])
-        return await self._run_kubectl_json(cmd)
+            kwargs["label_selector"] = label
+        pod_list = self._v1.list_namespaced_pod(namespace=namespace, **kwargs)
+        result = []
+        for p in pod_list.items:
+            restarts = 0
+            ready_count = 0
+            total_containers = len(p.status.container_statuses or [])
+            if p.status.container_statuses:
+                for c in p.status.container_statuses:
+                    restarts += c.restart_count
+                    if c.ready:
+                        ready_count += 1
+            result.append({
+                "name": p.metadata.name,
+                "namespace": p.metadata.namespace,
+                "status": p.status.phase,
+                "ready": f"{ready_count}/{total_containers}",
+                "restarts": restarts,
+                "age": "unknown",
+                "node": p.spec.node_name or "unassigned",
+            })
+        return result
 
     async def describe_pod(self, namespace: str, pod_name: str) -> Dict[str, Any]:
         """Provides detailed inspection of pod phase, exit codes, and conditions."""
@@ -94,8 +141,42 @@ class KubernetesService:
                 },
             }
 
-        cmd = ["kubectl", "get", "pod", pod_name, "-n", namespace, "-o", "json"]
-        return await self._run_kubectl_json(cmd)
+        self._ensure_client()
+        pod = self._v1.read_namespaced_pod(name=pod_name, namespace=namespace)
+        containers_info = []
+        for c in (pod.status.container_statuses or []):
+            term = c.last_state.terminated if c.last_state else None
+            waiting = c.state.waiting if c.state else None
+            containers_info.append({
+                "container": c.name,
+                "image": c.image,
+                "ready": c.ready,
+                "restart_count": c.restart_count,
+                "state": {
+                    "waiting": {"reason": waiting.reason, "message": waiting.message} if waiting else None
+                },
+                "last_state": {
+                    "terminated": {
+                        "exit_code": term.exit_code,
+                        "reason": term.reason,
+                        "finished_at": str(term.finished_at) if term else None,
+                    } if term else None
+                },
+            })
+
+        limits = {}
+        if pod.spec.containers:
+            res = pod.spec.containers[0].resources
+            if res and res.limits:
+                limits = {"cpu": res.limits.get("cpu", "unlimited"), "memory": res.limits.get("memory", "unlimited")}
+
+        return {
+            "name": pod.metadata.name,
+            "namespace": pod.metadata.namespace,
+            "phase": pod.status.phase,
+            "container_statuses": containers_info,
+            "resource_limits": limits,
+        }
 
     async def get_events(self, namespace: str = "production") -> List[Dict[str, Any]]:
         """Retrieves recent cluster events for the given namespace."""
@@ -122,9 +203,19 @@ class KubernetesService:
                 },
             ]
 
-        cmd = ["kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp", "-o", "json"]
-        res = await self._run_kubectl_json(cmd)
-        return res.get("items", [])
+        self._ensure_client()
+        events_list = self._v1.list_namespaced_event(namespace=namespace)
+        items = []
+        for e in events_list.items:
+            items.append({
+                "type": e.type,
+                "reason": e.reason,
+                "object": f"{e.involved_object.kind}/{e.involved_object.name}" if e.involved_object else "unknown",
+                "message": e.message,
+                "count": e.count or 1,
+                "last_timestamp": str(e.last_timestamp or e.event_time or "recent"),
+            })
+        return items
 
     async def get_pod_logs(
         self,
@@ -133,7 +224,7 @@ class KubernetesService:
         previous: bool = True,
         tail: int = 100,
     ) -> str:
-        """Fetches container logs, supporting previous crashed instance tail."""
+        """Fetches container logs using official SDK, supporting previous crashed instance tail."""
         InfraGuardrails.validate_command(f"kubectl logs {pod_name}", namespace=namespace)
 
         if self.mock_mode:
@@ -147,15 +238,23 @@ class KubernetesService:
                 "2026-11-03 06:12:00.215 FATAL [main] c.s.CheckoutApp: Kernel SIGKILL (Exit 137) caught. Process terminated."
             )
 
-        cmd = ["kubectl", "logs", pod_name, "-n", namespace, f"--tail={tail}"]
-        if previous:
-            cmd.append("--previous")
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate()
-        return stdout.decode("utf-8") if stdout else stderr.decode("utf-8")
+        self._ensure_client()
+        try:
+            logs = self._v1.read_namespaced_pod_log(
+                name=pod_name,
+                namespace=namespace,
+                previous=previous,
+                tail_lines=tail,
+            )
+            return logs
+        except Exception as e:
+            logger.warning(f"Failed to fetch previous logs for {pod_name}: {e}. Retrying without previous=True")
+            return self._v1.read_namespaced_pod_log(
+                name=pod_name,
+                namespace=namespace,
+                previous=False,
+                tail_lines=tail,
+            )
 
     async def get_rollouts(self, namespace: str, deployment_name: str) -> Dict[str, Any]:
         """Inspects recent GitOps/Kubernetes rollout revisions and commits."""
@@ -174,17 +273,49 @@ class KubernetesService:
                 "commit": svc.get("recent_commit", "a9f3b12"),
             }
 
-        cmd = ["kubectl", "rollout", "history", f"deployment/{deployment_name}", "-n", namespace, "-o", "json"]
-        return await self._run_kubectl_json(cmd)
+        self._ensure_client()
+        dep = self._apps_v1.read_namespaced_deployment(name=deployment_name, namespace=namespace)
+        annotations = dep.metadata.annotations or {}
+        curr_rev = annotations.get("deployment.kubernetes.io/revision", "1")
+        image = dep.spec.template.spec.containers[0].image if dep.spec.template.spec.containers else "unknown"
+
+        # Query replicasets to find previous revision
+        rs_list = self._apps_v1.list_namespaced_replica_set(namespace=namespace)
+        matching_rs = [
+            rs for rs in rs_list.items
+            if any(ref.name == deployment_name for ref in (rs.metadata.owner_references or []))
+        ]
+        matching_rs.sort(
+            key=lambda rs: int((rs.metadata.annotations or {}).get("deployment.kubernetes.io/revision", "0")),
+            reverse=True,
+        )
+
+        prev_rev = curr_rev
+        prev_image = image
+        if len(matching_rs) > 1:
+            prev_rs = matching_rs[1]
+            prev_rev = (prev_rs.metadata.annotations or {}).get("deployment.kubernetes.io/revision", "1")
+            if prev_rs.spec.template.spec.containers:
+                prev_image = prev_rs.spec.template.spec.containers[0].image
+
+        return {
+            "deployment": deployment_name,
+            "namespace": namespace,
+            "current_revision": int(curr_rev),
+            "current_image": image,
+            "previous_revision": int(prev_rev),
+            "previous_image": prev_image,
+            "deployed_at": str(dep.metadata.creation_timestamp),
+            "commit": annotations.get("app.kubernetes.io/commit", "HEAD"),
+        }
 
     async def rollout_undo(self, namespace: str, deployment_name: str) -> Dict[str, Any]:
-        """Rolls back deployment to previous stable revision (Mutating - Requires Approval)."""
+        """Rolls back deployment to previous stable revision using Kubernetes API patch."""
         cmd_str = f"kubectl rollout undo deployment/{deployment_name}"
         InfraGuardrails.validate_command(cmd_str, namespace=namespace)
 
         if self.mock_mode:
             svc = self._mock_state.get(deployment_name, {})
-            # Execute simulated rollback
             prev_rev = svc.get("previous_revision", 41)
             prev_img = svc.get("previous_image", "checkout:v2.4.1")
             svc["revision"] = 43
@@ -205,26 +336,32 @@ class KubernetesService:
                 "status": "Deployment successfully rolled back. 3/3 replicas healthy and ready.",
             }
 
-        cmd = ["kubectl", "rollout", "undo", f"deployment/{deployment_name}", "-n", namespace]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate()
-        return {
-            "success": proc.returncode == 0,
-            "output": stdout.decode("utf-8") if stdout else stderr.decode("utf-8"),
-        }
+        self._ensure_client()
+        # Find previous replica set pod template spec
+        rollout_info = await self.get_rollouts(namespace, deployment_name)
+        target_image = rollout_info["previous_image"]
 
-    async def _run_kubectl_json(self, cmd: List[str]) -> Any:
-        """Executes a kubectl command and parses JSON output."""
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            err = stderr.decode("utf-8")
-            raise RuntimeError(f"Kubectl execution failed: {err}")
-        return json.loads(stdout.decode("utf-8"))
+        patch = {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "containers": [
+                            {"name": deployment_name, "image": target_image}
+                        ]
+                    }
+                }
+            }
+        }
+        self._apps_v1.patch_namespaced_deployment(name=deployment_name, namespace=namespace, body=patch)
+        return {
+            "success": True,
+            "command": cmd_str,
+            "namespace": namespace,
+            "target": deployment_name,
+            "restored_revision": rollout_info["previous_revision"],
+            "active_image": target_image,
+            "status": f"Patched deployment {deployment_name} to restore image {target_image}.",
+        }
 
 
 k8s_service = KubernetesService()

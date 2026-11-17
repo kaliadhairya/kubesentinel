@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-service
+  namespace: production
+  labels:
+    app: cart-service
+  annotations:
+    argocd.argoproj.io/tracking-id: "ecommerce-root:apps/Deployment:production/cart-service"
+    argocd.argoproj.io/instance: "ecommerce-production"
+    app.kubernetes.io/managed-by: "argocd"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart-service
+  template:
+    metadata:
+      labels:
+        app: cart-service
+    spec:
+      containers:
+      - name: cart
+        image: nginx:alpine
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

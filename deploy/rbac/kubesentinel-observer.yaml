@@ -1,0 +1,43 @@
+# KubeSentinel Observer Identity (Investigator Pod)
+# Cluster-wide read-only access. Explicitly excludes secrets and configmaps.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubesentinel-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubesentinel-observer
+  namespace: kubesentinel-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubesentinel-observer-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "endpoints", "nodes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubesentinel-observer-binding
+subjects:
+  - kind: ServiceAccount
+    name: kubesentinel-observer
+    namespace: kubesentinel-system
+roleRef:
+  kind: ClusterRole
+  name: kubesentinel-observer-role
+  apiGroup: rbac.authorization.k8s.io

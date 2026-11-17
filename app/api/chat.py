@@ -27,7 +27,7 @@ async def chat_stream(req: ChatRequest):
                 namespace=req.namespace or "production",
                 service_name=req.service or "checkout-service",
             ):
-                payload = json.dumps(step)
+                payload = json.dumps(step, default=str)
                 yield f"data: {payload}\n\n"
         except Exception as e:
             logger.error(f"Error in chat stream: {e}", exc_info=True)

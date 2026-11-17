@@ -20,15 +20,23 @@ class Settings(BaseSettings):
     PROMETHEUS_MOCK_MODE: bool = True
     PROMETHEUS_URL: str = "http://localhost:9090"
 
-    # Database & Cache
+    # Database & Storage
     DATABASE_URL: str = "postgresql://kubesentinel:sentinel_secret@localhost:5438/kubesentinel_db"
-    REDIS_URL: str = "redis://localhost:6385/0"
+    CLUSTER_ID: str = "default-cluster"
+    ALERTMANAGER_HMAC_SECRET: str = "sentinel-hmac-secret-dev"
 
     # Intelligence & LLM Provider
-    LLM_PROVIDER: str = "mock"  # "mock", "ollama", "openai"
-    LLM_MODEL: str = "qwen2.5-coder:7b"
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    LLM_PROVIDER: str = "mock"  # "mock", "gemini", "openai"
+    LLM_MODEL: str = "gemini-2.5-flash"
+    GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    CASSETTE_MODE: str = "replay"  # "replay", "record", "live"
+    CASSETTES_DIR: str = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "tests",
+        "fixtures",
+        "cassettes",
+    )
 
     # Knowledge & Runbooks
     RUNBOOKS_DIR: str = os.path.join(

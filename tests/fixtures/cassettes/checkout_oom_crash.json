@@ -1,0 +1,78 @@
+{
+  "scenario": "checkout_oom_crash",
+  "namespace": "production",
+  "target_kind": "Deployment",
+  "target_name": "checkout-service",
+  "hops": [
+    {
+      "hop": 1,
+      "thought": "Incident report indicates checkout-service is crashing in production. Initiating diagnosis by analyzing memory working set and RED metrics from Prometheus.",
+      "tool_call": {
+        "tool": "promql_query_window",
+        "args": {
+          "metric_kind": "memory_working_set",
+          "lookback_minutes": 30
+        }
+      }
+    },
+    {
+      "hop": 2,
+      "thought": "Prometheus telemetry reveals container memory spiked linearly up to the 512Mi cgroup limit before dropping to zero. Inspecting Kubernetes pod status and container termination exit codes.",
+      "tool_call": {
+        "tool": "k8s_describe_workload",
+        "args": {
+          "pod_name": "checkout-7d4bf6-x9z1"
+        }
+      }
+    },
+    {
+      "hop": 3,
+      "thought": "Kubernetes confirms Pod terminated with exitCode 137 (OOMKilled) on current image checkout:v2.4.2. Checking recent deployment rollout revisions and Git commits to correlate release timing.",
+      "tool_call": {
+        "tool": "k8s_get_rollout_history",
+        "args": {
+          "deployment_name": "checkout-service"
+        }
+      }
+    },
+    {
+      "hop": 4,
+      "thought": "Deployment revision 42 rolled out 14 minutes ago by commit a9f3b12. Extracting previous container stderr logs before kernel SIGKILL to isolate the memory allocation failure.",
+      "tool_call": {
+        "tool": "k8s_get_logs",
+        "args": {
+          "pod_name": "checkout-7d4bf6-x9z1",
+          "previous": true
+        }
+      }
+    },
+    {
+      "hop": 5,
+      "thought": "Stack trace confirms Java heap space exhausted in com.store.session.LocalCache.put(). Querying authoritative operational runbooks for verified OOMKilled mitigation playbooks.",
+      "tool_call": {
+        "tool": "knowledge_hybrid_search",
+        "args": {
+          "query": "Pod Terminated with OOMKilled Exit Code 137",
+          "exact_tokens": ["137", "OOMKilled"]
+        }
+      }
+    }
+  ],
+  "synthesis": {
+    "summary": "### 🎯 Root Cause Analysis (RCA)\n- **Culprit Service**: `checkout-service` (Namespace: `production`)\n- **Primary Root Cause**: Memory leak in newly introduced in-memory cache (`LocalCache.java:88`), deployed 14 minutes ago in `checkout:v2.4.2` (Commit: `a9f3b12`) [Step 3, Step 4].\n- **Mechanism**: JVM OldGen memory continuously increased at ~12 MB/min until hitting the container cgroup limit of `512Mi` [Step 1], triggering Linux kernel SIGKILL (Exit Code 137) [Step 2].\n- **Impact**: 3/3 replicas in `CrashLoopBackOff`, causing 18.4% 5xx error rate on checkout paths.\n- **Runbook Guidance**: Verified operational runbook 'Pod Terminated with OOMKilled (Exit Code 137)' recommends rollback to previous stable revision [Step 5].",
+    "confidence": 0.96,
+    "evidence_citations": [1, 2, 3, 4, 5]
+  },
+  "remediation": {
+    "incident_id": "INC-CHECKOUT-01",
+    "service": "checkout-service",
+    "namespace": "production",
+    "action": "rollout_undo",
+    "command": "kubectl rollout undo deployment/checkout-service -n production",
+    "target_revision": 41,
+    "target_image": "checkout:v2.4.1",
+    "blast_radius": "Low (Rolling update across 3 replicas, zero downtime)",
+    "safety_status": "PASSED_GUARDRAILS",
+    "requires_human_approval": true
+  }
+}

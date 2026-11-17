@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout-service
+  namespace: production
+  labels:
+    app: checkout-service
+  annotations:
+    deployment.kubernetes.io/revision: "42"
+    app.kubernetes.io/commit: "a9f3b12 (feat: enable in-memory checkout session buffer)"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: checkout-service
+  template:
+    metadata:
+      labels:
+        app: checkout-service
+    spec:
+      containers:
+      - name: checkout
+        image: python:3.11-alpine
+        command: ["python3", "-c", "import time; print('Initializing checkout buffer...'); b = bytearray(200 * 1024 * 1024); time.sleep(10); print('Leaking memory...'); b2 = bytearray(400 * 1024 * 1024)"]
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5

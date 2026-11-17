@@ -93,7 +93,134 @@ body {
 .dot-amber { background-color: var(--accent-amber); box-shadow: 0 0 8px var(--accent-amber); }
 .dot-cyan { background-color: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan); }
 
-/* Main Layout */
+/* SRE Dark Console Upgrades: Hop Stepper, Citations, Redactions & GitOps Diff */
+.hop-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.latency-badge {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid #334155;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    margin-left: auto;
+}
+
+.citation-chip {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-green);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    margin-right: 6px;
+}
+
+.redacted-chip {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    display: inline-block;
+}
+
+.log-terminal-drawer {
+    background: #05080f;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    max-height: 180px;
+    overflow-y: auto;
+    color: #cbd5e1;
+    white-space: pre-wrap;
+}
+
+.diff-card {
+    background: #090d16;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+.diff-header {
+    background: #111827;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    color: var(--accent-cyan);
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+}
+
+.diff-content {
+    padding: 8px 12px;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    overflow-x: auto;
+}
+
+.diff-line-add {
+    color: #34d399;
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.diff-line-del {
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.verification-radar {
+    background: rgba(56, 189, 248, 0.05);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 12px;
+}
+
+.soak-timer-bar {
+    height: 6px;
+    background: #1e293b;
+    border-radius: 3px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.soak-timer-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #38bdf8, #10b981);
+    width: 0%;
+    transition: width 0.5s ease;
+}
 .sre-main {
     flex: 1;
     display: flex;

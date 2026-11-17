@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from app.core.config import settings
 from app.core.database import get_db_pool, close_db_pool
 from app.services.runbooks import runbook_service
+from app.services.ingress import k8s_event_watcher
 from app.api.chat import router as chat_router
 from app.api.alertmanager import router as alertmanager_router
 from app.api.remediate import router as remediate_router
@@ -22,7 +23,7 @@ logger = logging.getLogger("kubesentinel.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifecycle: manages database connection and runbooks cache."""
+    """Application lifecycle: manages database connection, runbooks cache, and cluster watcher."""
     logger.info("Initializing KubeSentinel...")
     # Initialize runbooks
     loaded = runbook_service.get_all_runbooks()
@@ -31,9 +32,13 @@ async def lifespan(app: FastAPI):
     # Initialize DB pool
     await get_db_pool()
 
+    # Start event-driven K8s Watcher
+    await k8s_event_watcher.start()
+
     yield
 
     logger.info("Shutting down KubeSentinel...")
+    await k8s_event_watcher.stop()
     await close_db_pool()
 
 
